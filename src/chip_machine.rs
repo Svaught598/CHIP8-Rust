@@ -6,8 +6,6 @@ use std::{time::{ Duration, Instant }, fs::{self, File}, io::Read};
 #[derive(Clone, Debug)]
 pub struct CHIPMachine {
     cpu: Processor,
-    width: usize,
-    height: usize,
     // Should always be the same size as `cells`. When updating, we read from
     // `cells` and write to `scratch_cells`, then swap. Otherwise it's not in
     // use, and `cells` should be updated directly.
@@ -22,8 +20,6 @@ impl CHIPMachine {
         let size = width.checked_mul(height).expect("too big");
         Self {
             cpu: Processor::new(size),
-            width,
-            height,
             start_time: Instant::now(),
             cycle_duration: Duration::from_micros(200),
             running: false,
@@ -32,7 +28,6 @@ impl CHIPMachine {
 
     pub fn cycle(&mut self) {
         self.cpu.tick();
-        println!("test cycle");
     }
 
     pub fn reset_start_time(&mut self) {
@@ -53,9 +48,11 @@ impl CHIPMachine {
         debug_assert_eq!(screen.len(), 4 * self.cpu.pixels.len());
         for (c, pix) in self.cpu.pixels.iter().zip(screen.chunks_exact_mut(4)) {
             let color = if *c {
-                [0x00, 0x00, 0x00, 0xFF]
+                //#2a9d8f
+                [0x2a, 0x9d, 0x8f, 0xFF]
             } else {
-                [0x00, 0xFF, 0xFF, 0xFF]
+                // #264653
+                [0x26, 0x46, 0x53, 0xFF]
             };
             pix.copy_from_slice(&color);
         }

@@ -16,6 +16,7 @@ pub enum ProcessorAction {
 }
 
 #[allow(non_snake_case)]
+#[allow(unused)]
 impl Processor {
     pub fn new(sz: usize) -> Self {
         Self {
@@ -44,8 +45,6 @@ impl Processor {
             ((op & 0x00F0) >> 4) as u8,
             (op & 0x000F) as u8,
         );
-
-
 
         let action = match nibbles {
             (0x0, 0x0, 0xF, 0xF) => self.op_00FF(nibbles),
@@ -228,7 +227,7 @@ impl Processor {
         let vf = vx > vy;
         let result = vx.wrapping_sub(vy);
         self.memory.v[0xF] = if vf {1} else {0};
-        self.memory.v[x] = (result & 0xFF);
+        self.memory.v[x] = result & 0xFF;
         ProcessorAction::NextInstruction
     }
 

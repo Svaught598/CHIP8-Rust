@@ -7,7 +7,6 @@ mod processor;
 use chip_machine::CHIPMachine;
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
-use winit_input_helper::WinitInputHelper;
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent },
@@ -21,7 +20,6 @@ const HEIGHT: usize = 32;
 fn main() -> Result<(), Error> {
     env_logger::init();
     let event_loop = EventLoop::new();
-    let mut input = WinitInputHelper::new();
 
     // setup window
     let window = {
@@ -56,6 +54,14 @@ fn main() -> Result<(), Error> {
                     println!("Window close event detected");
                     *control_flow = ControlFlow::Exit
                 },
+                WindowEvent::Resized(size) => {
+                    if let Err(err) = pixels.resize_surface(size.width, size.height) {
+                        error!("pixels.resize_surface() failed: {err}");
+                        *control_flow = ControlFlow::Exit;
+                        return;
+                    }
+                    window.request_redraw();
+                }
                 _ => ()
             },
             Event::MainEventsCleared => {
@@ -64,16 +70,6 @@ fn main() -> Result<(), Error> {
                 if elapsed >= chip8.cycle_duration {
                     chip8.cycle();
                     chip8.reset_start_time();
-                }
-                window.request_redraw();
-
-                // Resize the window
-                if let Some(size) = input.window_resized() {
-                    if let Err(err) = pixels.resize_surface(size.width, size.height) {
-                        error!("pixels.resize_surface() failed: {err}");
-                        *control_flow = ControlFlow::Exit;
-                        return;
-                    }
                 }
                 window.request_redraw();
             },

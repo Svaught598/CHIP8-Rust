@@ -34,32 +34,21 @@ impl Memory {
         }
     }
 
-    pub fn reset(&mut self) {
-        self.ram = [0; RAM_SZ];
-        self.stack = [0; STACK_SZ];
-        self.v = [0; V_SZ];
-        self.i = 0;
-        self.pc = 0;
-        self.sp = 0;
-        self.delay_timer = 0;
-        self.sound_timer = 0;
-        self.keypad = [false; KEYS_SZ];
-    }
+    // pub fn reset(&mut self) {
+    //     self.ram = [0; RAM_SZ];
+    //     self.stack = [0; STACK_SZ];
+    //     self.v = [0; V_SZ];
+    //     self.i = 0;
+    //     self.pc = 0;
+    //     self.sp = 0;
+    //     self.delay_timer = 0;
+    //     self.sound_timer = 0;
+    //     self.keypad = [false; KEYS_SZ];
+    // }
 
     pub fn get_instruction(&self) -> u16 {
         let high_nibble = (self.ram[self.pc as usize] as u16) << 8;
         let low_nibble = self.ram[(self.pc + 1) as usize] as u16;
         return high_nibble | low_nibble;
-    }
-
-    pub fn push_stack(&mut self, val: u16) {
-        self.stack[self.sp as usize] = val;
-        self.sp += 1;
-    }
-
-    pub fn pop_stack(&mut self) -> u16 {
-        self.sp -= 1;
-        let val = self.stack[self.sp as usize] as u16;
-        return val;
     }
 }
