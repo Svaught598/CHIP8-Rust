@@ -1,0 +1,19 @@
+[package]
+name = "chip8"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+optimize = ["log/release_max_level_warn"]
+default = ["optimize"]
+
+[dependencies]
+byteorder = "1"
+env_logger = "0.10"
+getrandom = "0.2"
+line_drawing = "1"
+log = "0.4"
+pixels = "0.11"
+randomize = "3"
+winit = "0.27"
+winit_input_helper = "0.13"
