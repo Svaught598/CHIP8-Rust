@@ -10,10 +10,8 @@ default = ["optimize"]
 [dependencies]
 byteorder = "1"
 env_logger = "0.10"
-getrandom = "0.2"
-line_drawing = "1"
 log = "0.4"
 pixels = "0.11"
-randomize = "3"
+rand = "0.8"
 winit = "0.27"
 winit_input_helper = "0.13"

@@ -8,25 +8,25 @@ const V_SZ: usize = 16;
 
 #[derive(Clone, Debug)]
 pub struct Memory {
-    ram: [u8; RAM_SZ],
-    stack: [u8; STACK_SZ],
-    v: [u8; V_SZ],
-    i: u16,
-    pc: u16,
-    sp: u16,
-    delay_timer: u8,
-    sound_timer: u8,
-    keypad: [bool; KEYS_SZ],
+    pub ram: [u8; RAM_SZ],
+    pub stack: [u16; STACK_SZ],
+    pub v: [u8; V_SZ],
+    pub i: u16,
+    pub pc: u16,
+    pub sp: u16,
+    pub delay_timer: u8,
+    pub sound_timer: u8,
+    pub keypad: [bool; KEYS_SZ],
 }
 
 impl Memory {
-    pub fn make_memory() -> Self {
+    pub fn new() -> Self {
         Self {
             ram: [0; RAM_SZ],
             stack: [0; STACK_SZ],
             v: [0; V_SZ],
             i: 0,
-            pc: 0,
+            pc: 0x200,
             sp: 0,
             delay_timer: 0,
             sound_timer: 0,
@@ -44,5 +44,22 @@ impl Memory {
         self.delay_timer = 0;
         self.sound_timer = 0;
         self.keypad = [false; KEYS_SZ];
+    }
+
+    pub fn get_instruction(&self) -> u16 {
+        let high_nibble = (self.ram[self.pc as usize] as u16) << 8;
+        let low_nibble = self.ram[(self.pc + 1) as usize] as u16;
+        return high_nibble | low_nibble;
+    }
+
+    pub fn push_stack(&mut self, val: u16) {
+        self.stack[self.sp as usize] = val;
+        self.sp += 1;
+    }
+
+    pub fn pop_stack(&mut self) -> u16 {
+        self.sp -= 1;
+        let val = self.stack[self.sp as usize] as u16;
+        return val;
     }
 }

@@ -10,13 +10,13 @@ use pixels::{Error, Pixels, SurfaceTexture};
 use winit_input_helper::WinitInputHelper;
 use winit::{
     dpi::LogicalSize,
-    event::{Event, VirtualKeyCode},
+    event::{Event, WindowEvent },
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
 
-const WIDTH: u32 = 64;
-const HEIGHT: u32 = 32;
+const WIDTH: usize = 64;
+const HEIGHT: usize = 32;
 
 fn main() -> Result<(), Error> {
     env_logger::init();
@@ -39,40 +39,53 @@ fn main() -> Result<(), Error> {
     let mut pixels = {
         let window_size = window.inner_size();
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
-        Pixels::new(WIDTH, HEIGHT, surface_texture)?
+        Pixels::new(WIDTH as u32, HEIGHT as u32, surface_texture)?
     };
 
-    let mut chip8: CHIPMachine = CHIPMachine::new_chip8(WIDTH as usize, HEIGHT as usize);
-    chip8.set_few();
+
+    let mut chip8: CHIPMachine = CHIPMachine::new(WIDTH as usize, HEIGHT as usize);
+    chip8.load_rom(String::from("./roms/test_opcode.ch8"));
     event_loop.run(move |event, _, control_flow| {
-        // The one and only event that winit_input_helper doesn't have for us...
-        if let Event::RedrawRequested(_) = event {
-            chip8.draw(pixels.get_frame_mut());
-            if let Err(err) = pixels.render() {
-                error!("pixels.render() failed: {}", err);
-                *control_flow = ControlFlow::Exit;
-                return;
-            }
-        }
+        match event {
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::KeyboardInput { input, .. } => {
+                    let key = input.virtual_keycode.unwrap();
+                    chip8.process_key(key);
+                }
+                WindowEvent::CloseRequested => {
+                    println!("Window close event detected");
+                    *control_flow = ControlFlow::Exit
+                },
+                _ => ()
+            },
+            Event::MainEventsCleared => {
+                // chip8 processing 
+                let elapsed = chip8.start_time.elapsed();
+                if elapsed >= chip8.cycle_duration {
+                    chip8.cycle();
+                    chip8.reset_start_time();
+                }
+                window.request_redraw();
 
-        // For everything else, for let winit_input_helper collect events to build its state.
-        // It returns `true` when it is time to update our game state and request a redraw.
-        if input.update(&event) {
-            // Close events
-            if input.key_pressed(VirtualKeyCode::Escape) || input.quit() {
-                *control_flow = ControlFlow::Exit;
-                return;
-            }
-
-            // Resize the window
-            if let Some(size) = input.window_resized() {
-                if let Err(err) = pixels.resize_surface(size.width, size.height) {
-                    error!("pixels.resize_surface() failed: {err}");
+                // Resize the window
+                if let Some(size) = input.window_resized() {
+                    if let Err(err) = pixels.resize_surface(size.width, size.height) {
+                        error!("pixels.resize_surface() failed: {err}");
+                        *control_flow = ControlFlow::Exit;
+                        return;
+                    }
+                }
+                window.request_redraw();
+            },
+            Event::RedrawRequested(_) => {
+                chip8.draw(pixels.get_frame_mut());
+                if let Err(err) = pixels.render() {
+                    error!("pixels.render() failed: {}", err);
                     *control_flow = ControlFlow::Exit;
                     return;
                 }
-            }
-            window.request_redraw();
+            },
+            _ => ()
         }
     });
 }
