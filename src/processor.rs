@@ -402,13 +402,23 @@ impl Processor {
 
     // Set I = location of sprite for digit Vx.
     pub fn op_Fx29(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
-        // TODO
+        let (_, _, x, ..) = process_nibbles(nibbles);
+        let vx = self.v[x];
+        self.i = (vx * 5) as u16;
         ProcessorAction::NextInstruction
     }
 
     // Store BCD representation of Vx in memory locations I, I+1, and I+2.
     pub fn op_Fx33(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
-        // TODO
+        let (_, _, x, ..) = process_nibbles(nibbles);
+        let vx = self.v[x];
+        let hundreds = vx / 100;
+        let tens = (vx / 10) % 10;
+        let ones = vx % 10;
+        let index = self.i as usize;
+        self.ram[index] = hundreds;
+        self.ram[index + 1] = tens;
+        self.ram[index + 2] = ones;
         ProcessorAction::NextInstruction
     }
 
