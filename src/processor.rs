@@ -1,11 +1,26 @@
-use crate::{memory::Memory, WIDTH, HEIGHT};
 use rand::Rng;
+use crate::{HEIGHT, WIDTH};
+
+const RAM_SZ: usize = 4096;
+const STACK_SZ: usize = 16;
+const KEYS_SZ: usize = 16;
+const V_SZ: usize = 16;
 
 #[derive(Clone, Debug)]
 pub struct Processor {
-    memory: Memory,
     pub pixels: Vec<bool>,
     cycle_buffer: Vec<bool>,
+
+    // memory
+    pub ram: [u8; RAM_SZ],
+    pub stack: [u16; STACK_SZ],
+    pub v: [u8; V_SZ],
+    pub i: u16,
+    pub pc: u16,
+    pub sp: u16,
+    pub delay_timer: u8,
+    pub sound_timer: u8,
+    pub keypad: [bool; KEYS_SZ],
 }
 
 #[derive(Debug)]
@@ -20,9 +35,19 @@ pub enum ProcessorAction {
 impl Processor {
     pub fn new(sz: usize) -> Self {
         Self {
-            memory: Memory::new(),
             pixels: vec![false; sz],
             cycle_buffer: vec![false; sz],
+
+            // memory
+            ram: [0; RAM_SZ],
+            stack: [0; STACK_SZ],
+            v: [0; V_SZ],
+            i: 0,
+            pc: 0x200,
+            sp: 0,
+            delay_timer: 0,
+            sound_timer: 0,
+            keypad: [false; KEYS_SZ],
         }
     }
 
@@ -30,15 +55,21 @@ impl Processor {
         for (i, &byte) in data.iter().enumerate() {
             let addr = 0x200 + i;
             if addr < 4096 {
-                self.memory.ram[0x200 + i] = byte;
+                self.ram[0x200 + i] = byte;
             } else {
                 break;
             }
         }
     }
 
+    pub fn get_instruction(&self) -> u16 {
+        let high_nibble = (self.ram[self.pc as usize] as u16) << 8;
+        let low_nibble = self.ram[(self.pc + 1) as usize] as u16;
+        return high_nibble | low_nibble;
+    }
+
     pub fn tick(&mut self) {
-        let op = self.memory.get_instruction();
+        let op = self.get_instruction();
         let nibbles = (
             ((op & 0xF000) >> 12) as u8,
             ((op & 0x0F00) >> 8) as u8,
@@ -95,9 +126,9 @@ impl Processor {
         };
 
         match action {
-            ProcessorAction::NextInstruction => self.memory.pc += 2,
-            ProcessorAction::SkipInstruction => self.memory.pc += 4,
-            ProcessorAction::JumpInstruction(j) => self.memory.pc = j + 2 as u16,
+            ProcessorAction::NextInstruction => self.pc += 2,
+            ProcessorAction::SkipInstruction => self.pc += 4,
+            ProcessorAction::JumpInstruction(j) => self.pc = j + 2 as u16,
         }
     }
 
@@ -110,8 +141,8 @@ impl Processor {
 
     // The interpreter sets the program counter to the address at the top of the stack, then subtracts 1 from the stack pointer.
     pub fn op_00EE(&mut self) -> ProcessorAction {
-        let addr = self.memory.stack[self.memory.sp as usize];
-        self.memory.sp -= 1;
+        let addr = self.stack[self.sp as usize];
+        self.sp -= 1;
         ProcessorAction::JumpInstruction(addr)
     }
 
@@ -124,15 +155,15 @@ impl Processor {
     // The interpreter increments the stack pointer, then puts the current PC on the top of the stack. The PC is then set to nnn.
     pub fn op_2nnn(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (nnn, ..) = process_nibbles(nibbles);
-        self.memory.sp += 1;
-        self.memory.stack[self.memory.sp as usize] = self.memory.pc;
+        self.sp += 1;
+        self.stack[self.sp as usize] = self.pc;
         ProcessorAction::JumpInstruction(nnn)
     }
 
     // The interpreter compares register Vx to kk, and if they are equal, increments the program counter by 2.
     pub fn op_3xkk(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, kk, x, ..) = process_nibbles(nibbles);
-        let vx = self.memory.v[x];
+        let vx = self.v[x];
         if vx == kk { ProcessorAction::SkipInstruction } 
         else { ProcessorAction::NextInstruction }
     }
@@ -140,15 +171,15 @@ impl Processor {
     // The interpreter compares register Vx to kk, and if they are not equal, increments the program counter by 2.
     pub fn op_4xkk(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, kk, x, ..) = process_nibbles(nibbles);
-        let vx = self.memory.v[x];
+        let vx = self.v[x];
         skip_if(vx != kk)
     }
 
     // The interpreter compares register Vx to register Vy, and if they are equal, increments the program counter by 2.
     pub fn op_5xy0(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, y, ..) = process_nibbles(nibbles);
-        let vx = self.memory.v[x];
-        let vy = self.memory.v[y];
+        let vx = self.v[x];
+        let vy = self.v[y];
         skip_if(vx == vy)
     }
 
@@ -156,51 +187,51 @@ impl Processor {
     pub fn op_6xkk(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, kk, ..) = process_nibbles(nibbles);
         let x = nibbles.1 as usize;
-        self.memory.v[x] = kk;
+        self.v[x] = kk;
         ProcessorAction::NextInstruction
     }
 
     // Adds the value kk to the value of register Vx, then stores the result in Vx.
     pub fn op_7xkk(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, kk, x, ..) = process_nibbles(nibbles);
-        let vx = self.memory.v[x];
+        let vx = self.v[x];
         let result = vx.wrapping_add(kk);
-        self.memory.v[x] = result as u8;
+        self.v[x] = result as u8;
         ProcessorAction::NextInstruction
     }
 
     // Stores the value of register Vy in register Vx.
     pub fn op_8xy0(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, y, _) = process_nibbles(nibbles);
-        let vy = self.memory.v[y];
-        self.memory.v[x] = vy;
+        let vy = self.v[y];
+        self.v[x] = vy;
         ProcessorAction::NextInstruction
     }
 
     // Performs a bitwise OR on the values of Vx and Vy, then stores the result in Vx.
     pub fn op_8xy1(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, y, _) = process_nibbles(nibbles);
-        let vx = self.memory.v[x];
-        let vy = self.memory.v[y];
-        self.memory.v[x] = vy | vx;
+        let vx = self.v[x];
+        let vy = self.v[y];
+        self.v[x] = vy | vx;
         ProcessorAction::NextInstruction
     }
 
     // Performs a bitwise AND on the values of Vx and Vy, then stores the result in Vx. 
     pub fn op_8xy2(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, y, _) = process_nibbles(nibbles);
-        let vx = self.memory.v[x];
-        let vy = self.memory.v[y];
-        self.memory.v[x] = vy & vx;
+        let vx = self.v[x];
+        let vy = self.v[y];
+        self.v[x] = vy & vx;
         ProcessorAction::NextInstruction
     }
 
     // Performs a bitwise exclusive OR on the values of Vx and Vy, then stores the result in Vx.
     pub fn op_8xy3(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, y, _) = process_nibbles(nibbles);
-        let vx = self.memory.v[x];
-        let vy = self.memory.v[y];
-        self.memory.v[x] = vy ^ vx;
+        let vx = self.v[x];
+        let vy = self.v[y];
+        self.v[x] = vy ^ vx;
         ProcessorAction::NextInstruction
     }
 
@@ -209,12 +240,12 @@ impl Processor {
     // Only the lowest 8 bits of the result are kept, and stored in Vx.
     pub fn op_8xy4(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, y, _) = process_nibbles(nibbles);
-        let vx = self.memory.v[x] as u16;
-        let vy = self.memory.v[y] as u16;
+        let vx = self.v[x] as u16;
+        let vy = self.v[y] as u16;
         let result = vx + vy;
         let carry = result > 0x100;
-        self.memory.v[0xF] = if carry {1} else {0};
-        self.memory.v[x] = (result & 0xFF) as u8;
+        self.v[0xF] = if carry {1} else {0};
+        self.v[x] = (result & 0xFF) as u8;
         ProcessorAction::NextInstruction
     }
 
@@ -222,12 +253,12 @@ impl Processor {
     // Then Vy is subtracted from Vx, and the results stored in Vx.
     pub fn op_8xy5(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, y, _) = process_nibbles(nibbles);
-        let vx = self.memory.v[x];
-        let vy = self.memory.v[y];
+        let vx = self.v[x];
+        let vy = self.v[y];
         let vf = vx > vy;
         let result = vx.wrapping_sub(vy);
-        self.memory.v[0xF] = if vf {1} else {0};
-        self.memory.v[x] = result & 0xFF;
+        self.v[0xF] = if vf {1} else {0};
+        self.v[x] = result & 0xFF;
         ProcessorAction::NextInstruction
     }
 
@@ -235,11 +266,11 @@ impl Processor {
     // Then Vx is divided by 2.
     pub fn op_8xy6(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, _, _) = process_nibbles(nibbles);
-        let vx = self.memory.v[x];
+        let vx = self.v[x];
         let vf = (vx & 0b1) == 0b1;
         let result = vx >> 2;
-        self.memory.v[0xF] = if vf {1} else {0};
-        self.memory.v[x] = result & 0xFF;
+        self.v[0xF] = if vf {1} else {0};
+        self.v[x] = result & 0xFF;
         ProcessorAction::NextInstruction
     }
 
@@ -247,12 +278,12 @@ impl Processor {
     // Then Vx is subtracted from Vy, and the results stored in Vx.
     pub fn op_8xy7(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, y, _) = process_nibbles(nibbles);
-        let vx = self.memory.v[x];
-        let vy = self.memory.v[y];
+        let vx = self.v[x];
+        let vy = self.v[y];
         let vf = vy > vx;
         let result = vy - vx;
-        self.memory.v[0xF] = if vf {1} else {0};
-        self.memory.v[x] = result & 0xFF;
+        self.v[0xF] = if vf {1} else {0};
+        self.v[x] = result & 0xFF;
         ProcessorAction::NextInstruction
     }
 
@@ -260,33 +291,33 @@ impl Processor {
     // Then Vx is multiplied by 2.
     pub fn op_8xyE(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, _, _) = process_nibbles(nibbles);
-        let vx = self.memory.v[x];
+        let vx = self.v[x];
         let vf = (vx >> 7) & 1 == 1;
         let result = vx.wrapping_mul(2);
-        self.memory.v[0xF] = if vf {1} else {0};
-        self.memory.v[x] = result;
+        self.v[0xF] = if vf {1} else {0};
+        self.v[x] = result;
         ProcessorAction::NextInstruction
     }
 
     // Skip next instruction if Vx != Vy.
     pub fn op_9xy0(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, y, _) = process_nibbles(nibbles);
-        let vx = self.memory.v[x];
-        let vy = self.memory.v[y];
+        let vx = self.v[x];
+        let vy = self.v[y];
         skip_if(vx != vy)
     }
 
     // The value of register I is set to nnn.
     pub fn op_Annn(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (nnn, ..) = process_nibbles(nibbles);
-        self.memory.i = nnn;
+        self.i = nnn;
         ProcessorAction::NextInstruction
     }
 
     // The program counter is set to nnn plus the value of V0.
     pub fn op_Bnnn(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (nnn, ..) = process_nibbles(nibbles);
-        self.memory.i = nnn + (self.memory.v[0] as u16);
+        self.i = nnn + (self.v[0] as u16);
         ProcessorAction::NextInstruction
     }
 
@@ -295,7 +326,7 @@ impl Processor {
     pub fn op_Cxkk(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, kk, x, ..) = process_nibbles(nibbles);
         let rnd = rand::thread_rng().gen_range(0..256) as u8;
-        self.memory.v[x] = kk & rnd;
+        self.v[x] = kk & rnd;
         ProcessorAction::NextInstruction
     }
 
@@ -306,16 +337,16 @@ impl Processor {
     // is outside the coordinates of the display, it wraps around to the opposite side of the screen. 
     pub fn op_Dxyn(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, y, n) = process_nibbles(nibbles);
-        let vx = self.memory.v[x] as usize;
-        let vy = self.memory.v[y] as usize;
-        let I = self.memory.i as usize;
+        let vx = self.v[x] as usize;
+        let vy = self.v[y] as usize;
+        let I = self.i as usize;
 
         for byte in 0..n {
             let jj = (byte + vy) % HEIGHT;
             for bit in 0..8 {
                 let ii = (bit + vx) % WIDTH;
-                let color = (self.memory.ram[I + byte] >> (7 - bit)) & 1;
-                self.memory.v[0x0f] |= color & self.cycle_buffer[ii + jj * WIDTH] as u8;
+                let color = (self.ram[I + byte] >> (7 - bit)) & 1;
+                self.v[0x0f] |= color & self.cycle_buffer[ii + jj * WIDTH] as u8;
                 self.cycle_buffer[ii + jj * WIDTH] ^= color == 1;
             }
         }
@@ -338,7 +369,7 @@ impl Processor {
     // Set Vx = delay timer value.
     pub fn op_Fx07(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, ..) = process_nibbles(nibbles);
-        self.memory.v[x] = self.memory.delay_timer;
+        self.v[x] = self.delay_timer;
         ProcessorAction::NextInstruction
     }
 
@@ -351,21 +382,21 @@ impl Processor {
     // Set delay timer = Vx.
     pub fn op_Fx15(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, ..) = process_nibbles(nibbles);
-        self.memory.delay_timer = self.memory.v[x];
+        self.delay_timer = self.v[x];
         ProcessorAction::NextInstruction
     }
 
     // Set sound timer = Vx.
     pub fn op_Fx18(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, ..) = process_nibbles(nibbles);
-        self.memory.sound_timer = self.memory.v[x];
+        self.sound_timer = self.v[x];
         ProcessorAction::NextInstruction
     }
 
     // Set I = I + Vx.
     pub fn op_Fx1E(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, ..) = process_nibbles(nibbles);
-        self.memory.i += self.memory.v[x] as u16;
+        self.i += self.v[x] as u16;
         ProcessorAction::NextInstruction
     }
 
@@ -385,9 +416,9 @@ impl Processor {
     pub fn op_Fx55(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, ..) = process_nibbles(nibbles);
         for i in 0..x {
-            let vi = self.memory.v[i];
-            let index = self.memory.i as usize + i;
-            self.memory.ram[index] = vi;
+            let vi = self.v[i];
+            let index = self.i as usize + i;
+            self.ram[index] = vi;
         }
         ProcessorAction::NextInstruction
     }
@@ -396,9 +427,9 @@ impl Processor {
     pub fn op_Fx65(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, ..) = process_nibbles(nibbles);
         for i in 0..x {
-            let index = i + self.memory.i as usize;
-            let vi = self.memory.ram[index];
-            self.memory.v[i] = vi;
+            let index = i + self.i as usize;
+            let vi = self.ram[index];
+            self.v[i] = vi;
         }
         ProcessorAction::NextInstruction
     }

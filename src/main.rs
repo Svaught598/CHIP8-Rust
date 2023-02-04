@@ -1,7 +1,6 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 mod chip_machine;
-mod memory;
 mod processor;
 
 use chip_machine::CHIPMachine;
