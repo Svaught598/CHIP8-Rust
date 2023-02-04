@@ -32,7 +32,6 @@ fn main() -> Result<(), Error> {
             .build(&event_loop)
             .unwrap()
     };
-    println!("WINDOW CREATED");
 
     // setup pixel buffer
     let mut pixels = {
@@ -40,11 +39,9 @@ fn main() -> Result<(), Error> {
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
         Pixels::new(WIDTH as u32, HEIGHT as u32, surface_texture)?
     };
-    println!("PIXELS CREATED");
 
     let mut chip8: CHIPMachine = CHIPMachine::new(WIDTH as usize, HEIGHT as usize);
     chip8.load_rom(String::from("./roms/test_opcode.ch8"));
-    println!("LOAD ROM");
     event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent { event, .. } => match event {

@@ -34,7 +34,7 @@ pub enum ProcessorAction {
 #[allow(unused)]
 impl Processor {
     pub fn new(sz: usize) -> Self {
-        Self {
+        let mut cpu = Self {
             pixels: vec![false; sz],
             cycle_buffer: vec![false; sz],
 
@@ -48,7 +48,14 @@ impl Processor {
             delay_timer: 0,
             sound_timer: 0,
             keypad: [false; KEYS_SZ],
+        };
+
+        // Load in font for first 0x200 bytes
+        for (i, byte) in FONT_MEM.iter().enumerate() {
+            cpu.ram[i] = *byte;
+            println!("{}", byte);
         }
+        cpu
     }
 
     pub fn load(&mut self, data: Vec<u8>) {
@@ -136,7 +143,7 @@ impl Processor {
 
     // Clear the display.
     pub fn op_00E0(&mut self) -> ProcessorAction {
-        for pix in self.cycle_buffer.iter_mut() { *pix = false; }
+
         self.cycle_buffer.clone_into(&mut self.pixels);
         ProcessorAction::NextInstruction
     }
@@ -268,11 +275,8 @@ impl Processor {
     // Then Vx is divided by 2.
     pub fn op_8xy6(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, _, _) = process_nibbles(nibbles);
-        let vx = self.v[x];
-        let vf = (vx & 0b1) == 0b1;
-        let result = vx >> 2;
-        self.v[0xF] = if vf {1} else {0};
-        self.v[x] = result & 0xFF;
+        self.v[0xF] = self.v[x] & 0b1;
+        self.v[x] >>= 1;
         ProcessorAction::NextInstruction
     }
 
@@ -282,10 +286,8 @@ impl Processor {
         let (_, _, x, y, _) = process_nibbles(nibbles);
         let vx = self.v[x];
         let vy = self.v[y];
-        let vf = vy > vx;
-        let result = vy - vx;
-        self.v[0xF] = if vf {1} else {0};
-        self.v[x] = result & 0xFF;
+        self.v[0xF] = if vy > vx {1} else {0};
+        self.v[x] = (vy - vx) & 0xFF;
         ProcessorAction::NextInstruction
     }
 
@@ -293,11 +295,8 @@ impl Processor {
     // Then Vx is multiplied by 2.
     pub fn op_8xyE(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, _, _) = process_nibbles(nibbles);
-        let vx = self.v[x];
-        let vf = (vx >> 7) & 1 == 1;
-        let result = vx.wrapping_mul(2);
-        self.v[0xF] = if vf {1} else {0};
-        self.v[x] = result;
+        self.v[0xF] = self.v[x] >> 7;
+        self.v[x] <<= 1;
         ProcessorAction::NextInstruction
     }
 
@@ -406,7 +405,7 @@ impl Processor {
     pub fn op_Fx29(&mut self, nibbles: (u8, u8, u8, u8)) -> ProcessorAction {
         let (_, _, x, ..) = process_nibbles(nibbles);
         let vx = self.v[x];
-        self.i = (vx * 5) as u16;
+
         ProcessorAction::NextInstruction
     }
 
@@ -508,3 +507,21 @@ fn process_nibbles(nibbles: (u8,u8,u8,u8)) -> (u16, u8, usize, usize, usize) {
 }
 
 
+const FONT_MEM: &'static [u8] = &[
+    0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+    0x20, 0x60, 0x20, 0x20, 0x70, // 1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+    0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+];
