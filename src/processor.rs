@@ -62,14 +62,16 @@ impl Processor {
         }
     }
 
-    pub fn get_instruction(&self) -> u16 {
-        let high_nibble = (self.ram[self.pc as usize] as u16) << 8;
-        let low_nibble = self.ram[(self.pc + 1) as usize] as u16;
-        return high_nibble | low_nibble;
+    pub fn get_instruction(&self) -> Option<u16> {
+        let high_nibble = self.ram.get(self.pc as usize);
+        let low_nibble = self.ram.get((self.pc + 1) as usize);
+        match (high_nibble, low_nibble) {
+            (Some(high), Some(low)) => Some(((*high as u16) << 8) | *low as u16),
+            _ => None,
+        }
     }
 
-    pub fn tick(&mut self) {
-        let op = self.get_instruction();
+    pub fn tick(&mut self, op: u16) {
         let nibbles = (
             ((op & 0xF000) >> 12) as u8,
             ((op & 0x0F00) >> 8) as u8,

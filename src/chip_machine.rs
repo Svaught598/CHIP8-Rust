@@ -27,7 +27,11 @@ impl CHIPMachine {
     }
 
     pub fn cycle(&mut self) {
-        self.cpu.tick();
+        let op = match self.cpu.get_instruction() {
+            Some(op) => op,
+            None => 0,
+        };
+        self.cpu.tick(op);
     }
 
     pub fn reset_start_time(&mut self) {
